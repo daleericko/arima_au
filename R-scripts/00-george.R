@@ -1,0 +1,97 @@
+# 00-George code example
+# fitting an ARIMA model 
+
+# setup
+rm(list = ls()) # clears anything in your environment
+
+## Load in packages
+staRtup::staRtup() # recommend this package to set up folders for optimal project
+library(tidyverse)# metapackage
+library(here) # used to help file paths
+library(forecast)
+library(glue) # for concatenating strings 
+library(assertthat) # for defensive programming
+
+## setup file paths
+todays_date <- Sys.Date()
+
+data_raw <- here::here("data-raw")
+data_output <- here::here("data-output")
+
+gold_file_name <- "Gold-Historical-Prices.csv"
+gold_file_path <- paste(data_raw, gold_file_name, sep = "/")
+
+# load in the data and clean the data types
+raw_data <- 
+  read_delim(gold_file_path, delim = ";") %>% 
+  janitor::clean_names() %>% # clean column names
+  mutate(
+    date = lubridate::ymd(date), 
+    change_percent = as.numeric(str_remove_all(change_percent, "%"))
+  )
+  
+# take a glance at the data 
+skimr::skim(raw_data) # no missing values :) 
+
+# plot the data over time
+raw_data %>% 
+  ggplot(aes(x = date, y = price)) + 
+  geom_line(color = "red")
+
+# Check model assumptions (skiped for sake of example)
+
+# make raw_data into time series object
+au_timeseries <- 
+  raw_data %>% 
+  arrange(date) %>% # put dates in order from oldest to newest
+  select(price) %>% 
+  ts()
+
+par(mar=c(1,1,1,1)) # change figure margins for plot
+
+plot(au_timeseries) # plot data we have
+
+fit_arima <- auto.arima(au_timeseries) # fit the model with heuristics (auto arima)
+
+forcastData <- forecast(fit_arima, h = 365) # forecast for one year
+plot(forcastData) # plot the forecast
+
+# any data you want from the fitted model or forecast is found in the forcastData
+# list object 
+
+fitted_residuals <- 
+  forcastData$residuals %>% 
+  as_tibble()
+
+upper_forecast <- 
+  forcastData$upper %>%
+  as_tibble() %>%  # is time series object that needs to be tibble or dataframe
+  janitor::clean_names()
+
+# create a function to save files as csv
+save_forecasts_as_csv <- function(.df, file_name) {
+  assertthat::assert_that(
+    str_detect(file_name, ".csv", negate = TRUE), 
+    msg = "No file extension"
+  ) 
+  
+  write_csv(
+    x = .df, 
+    path = paste0(
+      data_raw, 
+      "/", 
+      todays_date, 
+      "_", 
+      as.character(file_name), 
+      ".csv"
+      )
+    )
+  
+  message(glue::glue("{file_name} saved in data_output folder"))
+}
+
+# apply function to save what part you want
+save_forecasts_as_csv(fitted_residuals, "fitted_res")
+save_forecasts_as_csv(upper_forecast, "upper_forcast")
+
+message("Code complete!")

@@ -1,0 +1,5 @@
+fit <- auto.arima(EuStockMarkets[, "DAX"])
+
+
+
+
